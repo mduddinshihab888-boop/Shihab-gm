@@ -1,0 +1,538 @@
+সমস্যাটি ধরা পড়েছে। স্ক্রিনশট অনুযায়ী গিটহাব অ্যাকশনস পুরো প্রজেক্ট তৈরি করতে পেরেছে (রুট প্রজেক্টের নাম Shihab Manufacturing শনাক্ত হয়েছে এবং assembleDebug টাস্কও রান করেছে)। কিন্তু Process completed with exit code 1 এসে আটকে গেছে।
+এর আসল কারণ হলো—অ্যান্ড্রয়েড এসডিকে (Android SDK) লাইসেন্স স্বয়ংক্রিয়ভাবে অ্যাক্সেপ্ট করা ছিল না এবং অ্যাকশনসের ক্যাশ প্লাগইন (setup-gradle) কনফ্লিক্ট করেছে।
+এটি ঠিক করার জন্য ফাইলটি সামান্য আপডেট করলেই বিল্ড সফল হবে:
+
+name: Build Shihab Manufacturing Game
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Accept Android SDK Licenses
+      run: |
+        yes | sdkmanager --licenses || true
+
+    - name: Generate Project Files
+      run: |
+        mkdir -p app/src/main/java/com/shihab/manufacturing
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/values
+
+        cat << 'EOF' > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "Shihab Manufacturing"
+        include ':app'
+        EOF
+
+        cat << 'EOF' > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.2.2'
+                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22'
+            }
+        }
+        tasks.register('clean', Delete) {
+            delete rootProject.buildDir
+        }
+        EOF
+
+        cat << 'EOF' > app/build.gradle
+        plugins {
+            id 'com.android.application'
+            id 'org.jetbrains.kotlin.android'
+        }
+        android {
+            namespace 'com.shihab.manufacturing'
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.shihab.manufacturing"
+                minSdk 26
+                targetSdk 34
+                versionCode 1
+                versionName "1.0.0"
+            }
+            buildTypes {
+                release {
+                    minifyEnabled false
+                }
+            }
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+            kotlinOptions {
+                jvmTarget = '17'
+            }
+        }
+        dependencies {
+            implementation 'androidx.core:core-ktx:1.12.0'
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+            <application
+                android:allowBackup="true"
+                android:label="শিহাব ম্যানুফ্যাকচারিং"
+                android:supportsRtl="true"
+                android:theme="@style/Theme.AppCompat.NoActionBar">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:screenOrientation="landscape">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+
+        cat << 'EOF' > app/src/main/res/values/strings.xml
+        <resources>
+            <string name="app_name">শিহাব ম্যানুফ্যাকচারিং</string>
+        </resources>
+        EOF
+
+        cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#050811"
+            android:keepScreenOn="true">
+
+            <FrameLayout
+                android:id="@+id/glContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <LinearLayout
+                android:id="@+id/topHud"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#DD09111E"
+                android:padding="8dp"
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/tvCash"
+                    android:layout_width="0dp"
+                    android:layout_weight="1.2"
+                    android:layout_height="wrap_content"
+                    android:text="নগদ: $১০০,০০০"
+                    android:textColor="#2ECC71"
+                    android:textStyle="bold"
+                    android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/tvMode"
+                    android:layout_width="0dp"
+                    android:layout_weight="1.6"
+                    android:layout_height="wrap_content"
+                    android:text="শিহাব: প্রপার্টিতে হাঁটছেন"
+                    android:textColor="#3498DB"
+                    android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/tvGear"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="গিয়ার: N"
+                    android:textColor="#E67E22"
+                    android:textStyle="bold"
+                    android:textSize="12sp"
+                    android:layout_marginEnd="8dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentStart="true"
+                android:layout_margin="14dp">
+                <Button android:id="@+id/btnMoveLeft" android:layout_width="50dp" android:layout_height="50dp" android:text="◀" />
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
+                    <Button android:id="@+id/btnMoveUp" android:layout_width="50dp" android:layout_height="50dp" android:text="▲" />
+                    <Button android:id="@+id/btnMoveDown" android:layout_width="50dp" android:layout_height="50dp" android:text="▼" />
+                </LinearLayout>
+                <Button android:id="@+id/btnMoveRight" android:layout_width="50dp" android:layout_height="50dp" android:text="▶" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:layout_alignParentEnd="true"
+                android:layout_margin="14dp"
+                android:orientation="vertical">
+                <Button
+                    android:id="@+id/btnDoorSwitch"
+                    android:layout_width="180dp"
+                    android:layout_height="42dp"
+                    android:text="🚪 গাড়িতে উঠুন"
+                    android:backgroundTint="#27AE60"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginBottom="4dp" />
+                <Button
+                    android:id="@+id/btnFleetPicker"
+                    android:layout_width="180dp"
+                    android:layout_height="42dp"
+                    android:text="🚜 গাড়িবহর (৩১টি + টেসলা)"
+                    android:backgroundTint="#2980B9"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginBottom="4dp" />
+                <Button
+                    android:id="@+id/btnPhase2Pond"
+                    android:layout_width="180dp"
+                    android:layout_height="42dp"
+                    android:text="⛏️ খনন ও পুকুর পাম্প"
+                    android:backgroundTint="#8E44AD"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginBottom="4dp" />
+                <Button
+                    android:id="@+id/btnPhase2Farm"
+                    android:layout_width="180dp"
+                    android:layout_height="42dp"
+                    android:text="🌾 কৃষি ও হারভেস্টার"
+                    android:backgroundTint="#16A085"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginBottom="4dp" />
+                <Button
+                    android:id="@+id/btnPhase3Animals"
+                    android:layout_width="180dp"
+                    android:layout_height="42dp"
+                    android:text="🐄 খামার ও দুধ বাজার ($)"
+                    android:backgroundTint="#D35400"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+        </RelativeLayout>
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/shihab/manufacturing/NewZealandRenderer.kt
+        package com.shihab.manufacturing
+
+        import android.opengl.GLES30
+        import android.opengl.GLSurfaceView
+        import javax.microedition.khronos.egl.EGLConfig
+        import javax.microedition.khronos.opengles.GL10
+
+        class NewZealandRenderer : GLSurfaceView.Renderer {
+            var posX = 0f
+            var posZ = 0f
+            var isVehicleActive = false
+            var waterPumpActive = false
+
+            override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+                GLES30.glClearColor(0.20f, 0.40f, 0.28f, 1.0f)
+                GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+            }
+
+            override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+                GLES30.glViewport(0, 0, width, height)
+            }
+
+            override fun onDrawFrame(gl: GL10?) {
+                if (waterPumpActive) {
+                    GLES30.glClearColor(0.12f, 0.32f, 0.45f, 1.0f)
+                } else if (isVehicleActive) {
+                    GLES30.glClearColor(0.22f, 0.35f, 0.25f, 1.0f)
+                } else {
+                    GLES30.glClearColor(0.20f, 0.40f, 0.28f, 1.0f)
+                }
+                GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+            }
+        }
+        EOF
+
+        cat << 'EOF' > app/src/main/java/com/shihab/manufacturing/MainActivity.kt
+        package com.shihab.manufacturing
+
+        import android.app.AlertDialog
+        import android.opengl.GLSurfaceView
+        import android.os.Bundle
+        import android.widget.*
+        import androidx.appcompat.app.AppCompatActivity
+
+        class MainActivity : AppCompatActivity() {
+
+            private lateinit var glView: GLSurfaceView
+            private lateinit var renderer: NewZealandRenderer
+
+            private var bankCash = 100000.0
+            private var isDriving = false
+            private var currentGear = "N"
+            private var currentVehicleIndex = 0
+
+            private var excavatedSoilTonnes = 0
+            private var pondDepthStage = 0
+            private var pondWaterLevel = 0
+            private var isPumpRunning = false
+            private var isFieldPlowed = false
+            private var isFieldSeeded = false
+            private var cropGrowthPercent = 0
+            private var harvestedGrainsTonnes = 0
+
+            private var cowCount = 12
+            private var goatCount = 20
+            private var storedMilkLiters = 250.0
+            private var towChainConnected = false
+
+            private val completeVehicleFleet = arrayOf(
+                "ব্যক্তিগত ভিআইপি টেসলা মডেল ৩",
+                "এক্সকাভেটর ১ (হোয়াইট - CAT 349)",
+                "এক্সকাভেটর ২ (ইয়েলো - Hitachi ZX470)",
+                "এক্সকাভেটর ৩ (অরেঞ্জ - Heavy Digger)",
+                "মাটি ডাম্প ট্রাক ১ (৩-এক্সেল)",
+                "মাটি ডাম্প ট্রাক ২ (৩-এক্সেল)",
+                "মাটি ডাম্প ট্রাক ৩ (৩-এক্সেল)",
+                "মাটি ডাম্প ট্রাক ৪ (৫-এক্সেল)",
+                "মাটি ডাম্প ট্রাক ৫ (৫-এক্সেল)",
+                "ফার্মিং ট্র্যাক্টর ১",
+                "ফার্মিং ট্র্যাক্টর ২",
+                "মাটি পরিবহন ট্র্যাক্টর ১",
+                "মাটি পরিবহন ট্র্যাক্টর ২",
+                "মাটি পরিবহন ট্র্যাক্টর ৩",
+                "ভারী ক্রেন ট্রাক",
+                "লেভেলিং মেশিন ১",
+                "লেভেলিং মেশিন ২",
+                "সিটি ডেলিভারি ট্রাক ১",
+                "সিটি ডেলিভারি ট্রাক ২",
+                "সিটি ডেলিভারি ট্রাক ৩",
+                "হেভি কার্গো ট্রাক ১",
+                "হেভি কার্গো ট্রাক ২",
+                "হেভি কার্গো ট্রাক ৩",
+                "হেভি ইকুইপমেন্ট ট্রান্সপোর্টার ১",
+                "হেভি ইকুইপমেন্ট ট্রান্সপোর্টার ২",
+                "হুইল লোডার ১",
+                "হুইল লোডার ২",
+                "রোড রোলার ১",
+                "রোড রোলার ২",
+                "অ্যাসফাল্ট পেভার",
+                "ওয়াটার ট্যাংকার",
+                "বিটুমেন ট্যাংকার",
+                "কম্বাইন হারভেস্টার",
+                "কর্ন হারভেস্টার",
+                "পটেটো হারভেস্টার",
+                "ফোরেজ হারভেস্টার",
+                "এআই ফুয়েল ডেলিভারি ট্যাংকার"
+            )
+
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContentView(R.layout.activity_main)
+
+                val container: FrameLayout = findViewById(R.id.glContainer)
+                glView = GLSurfaceView(this).apply {
+                    setEGLContextClientVersion(3)
+                    renderer = NewZealandRenderer()
+                    setRenderer(renderer)
+                }
+                container.addView(glView)
+
+                val tvCash: TextView = findViewById(R.id.tvCash)
+                val tvMode: TextView = findViewById(R.id.tvMode)
+                val tvGear: TextView = findViewById(R.id.tvGear)
+
+                val btnDoorSwitch: Button = findViewById(R.id.btnDoorSwitch)
+                val btnFleetPicker: Button = findViewById(R.id.btnFleetPicker)
+                val btnPhase2Pond: Button = findViewById(R.id.btnPhase2Pond)
+                val btnPhase2Farm: Button = findViewById(R.id.btnPhase2Farm)
+                val btnPhase3Animals: Button = findViewById(R.id.btnPhase3Animals)
+
+                val btnUp: Button = findViewById(R.id.btnMoveUp)
+                val btnDown: Button = findViewById(R.id.btnMoveDown)
+                val btnLeft: Button = findViewById(R.id.btnMoveLeft)
+                val btnRight: Button = findViewById(R.id.btnMoveRight)
+
+                fun updateUI() {
+                    tvCash.text = "নগদ: $" + String.format("%.2f", bankCash)
+                    if (isDriving) {
+                        tvMode.text = "চালনা করছেন: " + completeVehicleFleet[currentVehicleIndex]
+                        btnDoorSwitch.text = "🚪 গাড়ি থেকে নামুন"
+                        currentGear = "D1"
+                        tvGear.text = "গিয়ার: $currentGear"
+                    } else {
+                        tvMode.text = "শিহাব: প্রপার্টিতে হাঁটছেন"
+                        btnDoorSwitch.text = "🚪 গাড়িতে উঠুন"
+                        currentGear = "N"
+                        tvGear.text = "গিয়ার: $currentGear"
+                    }
+                    renderer.isVehicleActive = isDriving
+                    renderer.waterPumpActive = isPumpRunning
+                }
+
+                btnDoorSwitch.setOnClickListener {
+                    isDriving = !isDriving
+                    updateUI()
+                }
+
+                btnFleetPicker.setOnClickListener {
+                    AlertDialog.Builder(this)
+                        .setTitle("গাড়িবহর নির্বাচন")
+                        .setItems(completeVehicleFleet) { _, idx ->
+                            currentVehicleIndex = idx
+                            isDriving = true
+                            updateUI()
+                        }
+                        .setNegativeButton("বন্ধ", null)
+                        .show()
+                }
+
+                btnPhase2Pond.setOnClickListener {
+                    val options = arrayOf(
+                        "⛏️ মাটি খনন (+৫০ টন)",
+                        "🚚 মাটি পরিবহন (+$৩৫০০)",
+                        "💧 ওয়াটার পাম্প চালু/বন্ধ",
+                        "🌊 পানি নিষ্কাশন সুইচ"
+                    )
+                    AlertDialog.Builder(this)
+                        .setTitle("পুকুর নির্মাণ ও পানি")
+                        .setItems(options) { _, which ->
+                            when (which) {
+                                0 -> {
+                                    excavatedSoilTonnes += 50
+                                    pondDepthStage = minOf(4, pondDepthStage + 1)
+                                    Toast.makeText(this, "মাটি উত্তোলিত: $excavatedSoilTonnes টন", Toast.LENGTH_SHORT).show()
+                                }
+                                1 -> {
+                                    if (excavatedSoilTonnes > 0) {
+                                        bankCash += 3500.0
+                                        excavatedSoilTonnes = 0
+                                        Toast.makeText(this, "মাটি অপসারণ সম্পন্ন! নগদ জমা: $৩৫০০", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                2 -> {
+                                    isPumpRunning = !isPumpRunning
+                                    if (isPumpRunning) pondWaterLevel = minOf(100, pondWaterLevel + 25)
+                                    Toast.makeText(this, "পাম্প: " + (if (isPumpRunning) "চালু" else "বন্ধ"), Toast.LENGTH_SHORT).show()
+                                }
+                                3 -> {
+                                    pondWaterLevel = maxOf(0, pondWaterLevel - 25)
+                                    Toast.makeText(this, "পানি স্তর: $pondWaterLevel%", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            updateUI()
+                        }
+                        .show()
+                }
+
+                btnPhase2Farm.setOnClickListener {
+                    val farmOptions = arrayOf(
+                        "🚜 জমি চাষ (Plowing)",
+                        "🌱 ১০০% ফ্রি বীজ বপন",
+                        "🌾 হারভেস্টার দিয়ে শস্য কর্তন",
+                        "💰 বাজারে শস্য বিক্রি (+$)"
+                    )
+                    AlertDialog.Builder(this)
+                        .setTitle("৫-বিঘা কৃষি জমি")
+                        .setItems(farmOptions) { _, which ->
+                            when (which) {
+                                0 -> isFieldPlowed = true
+                                1 -> {
+                                    if (isFieldPlowed) {
+                                        isFieldSeeded = true
+                                        cropGrowthPercent = 100
+                                    }
+                                }
+                                2 -> {
+                                    if (isFieldSeeded && cropGrowthPercent == 100) {
+                                        harvestedGrainsTonnes += 40
+                                        isFieldSeeded = false
+                                        cropGrowthPercent = 0
+                                    }
+                                }
+                                3 -> {
+                                    if (harvestedGrainsTonnes > 0) {
+                                        bankCash += (harvestedGrainsTonnes * 400.0)
+                                        harvestedGrainsTonnes = 0
+                                    }
+                                }
+                            }
+                            updateUI()
+                        }
+                        .show()
+                }
+
+                btnPhase3Animals.setOnClickListener {
+                    val animalOptions = arrayOf(
+                        "🐄 গরু ও ছাগল খামার পরিদর্শন",
+                        "🥛 দুধ সংগ্রহ ও চিলিং সংরক্ষণ",
+                        "🚛 বাজারে দুধ বিক্রি (+$)",
+                        "🔗 রেসকিউ টো চেইন সুইচ"
+                    )
+                    AlertDialog.Builder(this)
+                        .setTitle("খামার ও কারখানা অর্থনীতি")
+                        .setItems(animalOptions) { _, which ->
+                            when (which) {
+                                1 -> storedMilkLiters += 120.0
+                                2 -> {
+                                    if (storedMilkLiters > 0) {
+                                        bankCash += (storedMilkLiters * 15.0)
+                                        storedMilkLiters = 0.0
+                                    }
+                                }
+                                3 -> towChainConnected = !towChainConnected
+                            }
+                            updateUI()
+                        }
+                        .show()
+                }
+
+                val moveDistance = 2.0f
+                btnUp.setOnClickListener { renderer.posZ += moveDistance }
+                btnDown.setOnClickListener { renderer.posZ -= moveDistance }
+                btnLeft.setOnClickListener { renderer.posX -= moveDistance }
+                btnRight.setOnClickListener { renderer.posX += moveDistance }
+
+                updateUI()
+            }
+        }
+        EOF
+
+    - name: Build with Gradle Wrapper
+      run: |
+        gradle wrapper --gradle-version 8.5
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace
+
+    - name: Upload Shihab Manufacturing Master APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: Shihab_Manufacturing_Master_APK
+        path: app/build/outputs/apk/debug/app-debug.apk
+
+
